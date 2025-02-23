@@ -1,0 +1,58 @@
+#pragma once
+
+#include <Arduino.h>
+#include "endpoint_types.h"
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+#include <string>
+#include <ArduinoJson.h>
+#include "ble_constants.h"
+#include <WebServer.h>
+
+class BLERequestCallback;
+class BLEResponseCallback;
+
+class BLEHandler {
+public:
+    BLEHandler(WebServer* server);
+    void init();
+    void stop();
+    bool sendResponse(const String& location, const String& method, const String& data, int offset = 0);
+    void handleRequest(const String& request);
+    void checkAdvertising();
+
+private:
+    WebServer* webServer;
+    BLEServer* pServer;
+    BLEService* pService;
+    BLECharacteristic* pRequestChar;
+    BLECharacteristic* pResponseChar;
+    BLERequestCallback* pRequestCallback;
+    BLEResponseCallback* pResponseCallback;
+    bool isAdvertising;
+    
+    String constructResponse(const String& location, const String& method, 
+                           const String& data, int offset);
+    bool parseRequest(const String& request, String& method, String& path, 
+                     String& content, int& offset);
+    void handleRequestInternal(const String& method, const String& path, 
+                             const String& content, int offset);
+};
+
+class BLERequestCallback : public BLECharacteristicCallbacks {
+public:
+    BLERequestCallback(BLEHandler* handler) : handler(handler) {}
+    void onWrite(BLECharacteristic* pCharacteristic);
+private:
+    BLEHandler* handler;
+};
+
+class BLEResponseCallback : public BLECharacteristicCallbacks {
+public:
+    BLEResponseCallback(BLEHandler* handler) : handler(handler) {}
+    void onRead(BLECharacteristic* pCharacteristic);
+private:
+    BLEHandler* handler;
+}; 
