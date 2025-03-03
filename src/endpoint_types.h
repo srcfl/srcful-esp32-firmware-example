@@ -20,5 +20,6 @@ enum class Endpoint {
     WIFI_SCAN,
     INITIALIZE,
     BLE_STOP,
+    CRYPTO_SIGN,
     UNKNOWN
 }; 

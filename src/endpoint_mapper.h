@@ -16,6 +16,7 @@ public:
     static const char* WIFI_SCAN_PATH;
     static const char* INITIALIZE_PATH;
     static const char* BLE_STOP_PATH;
+    static const char* CRYPTO_SIGN_PATH;
 
     // Mapping functions
     static Endpoint pathToEndpoint(const String& path);
