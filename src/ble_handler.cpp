@@ -3,6 +3,9 @@
 #include <Arduino.h>
 #include <HTTPClient.h>
 #include <esp_system.h>
+#include <esp_bt.h>              // For esp_bt_controller functions
+#include <esp_bt_main.h>         // For esp_bluedroid functions
+#include <esp_gap_ble_api.h>     // For BLE GAP functionality
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include "crypto.h"
@@ -13,11 +16,21 @@ BLEHandler::BLEHandler(WebServer* server) : webServer(server) {
     pService = nullptr;
     pRequestChar = nullptr;
     pResponseChar = nullptr;
+    pServerCallbacks = nullptr;
     isAdvertising = false;
 }
 
 void BLEHandler::init() {
-    // Initialize BLE with reduced features
+    // Initialize BLE with reduced features and increase stack size for better handling
+    esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
+    bt_cfg.controller_task_stack_size = 4096;
+    bt_cfg.mode = ESP_BT_MODE_BLE;
+    
+    esp_bt_controller_init(&bt_cfg);
+    esp_bt_controller_enable(ESP_BT_MODE_BLE);
+    esp_bluedroid_init();
+    esp_bluedroid_enable();
+    
     BLEDevice::init("Sourceful Gateway Zap");
     btStart();
     esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);  // Release classic BT memory
@@ -25,16 +38,23 @@ void BLEHandler::init() {
     // Create server
     pServer = BLEDevice::createServer();
     
-    // Create service
-    pService = pServer->createService(SRCFUL_SERVICE_UUID);
+    // Add server connection callbacks to detect disconnections
+    pServerCallbacks = new SrcfulBLEServerCallbacks();
+    pServer->setCallbacks(pServerCallbacks);
+    
+    // Create service with extended attribute table size for iOS
+    pService = pServer->createService(BLEUUID(SRCFUL_SERVICE_UUID), 40);
     
     // Create characteristics with notification support
+    // Use WRITE_NR (no response) for request characteristic as iOS prefers this
     pRequestChar = pService->createCharacteristic(
         SRCFUL_REQUEST_CHAR_UUID,
         BLECharacteristic::PROPERTY_WRITE | 
+        BLECharacteristic::PROPERTY_WRITE_NR |  // Add no-response write for iOS
         BLECharacteristic::PROPERTY_NOTIFY
     );
     
+    // For response char, ensure both NOTIFY and INDICATE are available for iOS
     pResponseChar = pService->createCharacteristic(
         SRCFUL_RESPONSE_CHAR_UUID,
         BLECharacteristic::PROPERTY_READ | 
@@ -42,9 +62,15 @@ void BLEHandler::init() {
         BLECharacteristic::PROPERTY_INDICATE
     );
     
-    // Create BLE Descriptors for notifications
-    pRequestChar->addDescriptor(new BLE2902());
-    pResponseChar->addDescriptor(new BLE2902());
+    // Create BLE Descriptors for notifications - crucial for iOS
+    BLE2902* pRequestDescriptor = new BLE2902();
+    pRequestDescriptor->setNotifications(true);
+    pRequestChar->addDescriptor(pRequestDescriptor);
+    
+    BLE2902* pResponseDescriptor = new BLE2902();
+    pResponseDescriptor->setNotifications(true);
+    pResponseDescriptor->setIndications(true);  // Add indication support
+    pResponseChar->addDescriptor(pResponseDescriptor);
     
     // Set callbacks
     pRequestCallback = new BLERequestCallback(this);
@@ -55,17 +81,27 @@ void BLEHandler::init() {
     // Start service
     pService->start();
 
-    // Improved advertising configuration
+    // Improved advertising configuration for iOS compatibility
     BLEAdvertising* pAdvertising = BLEDevice::getAdvertising();
     pAdvertising->addServiceUUID(SRCFUL_SERVICE_UUID);
     pAdvertising->setScanResponse(true);
-    pAdvertising->setMinPreferred(0x06);  // functions that help with iPhone connections issue
+    
+    // These settings significantly improve iOS/macOS compatibility
+    pAdvertising->setMinPreferred(0x06);  // Settings that help with iPhone connections
     pAdvertising->setMaxPreferred(0x12);
+    
+    // Set specific advertising intervals for better iOS/macOS discovery
+    // Apple devices prefer faster advertising intervals
+    pAdvertising->setMinInterval(0x20);   // 20ms
+    pAdvertising->setMaxInterval(0x30);   // 30ms
+    
+    // Set appearance and device name - helps with iOS discovery
+    esp_ble_gap_set_device_name("Sourceful Gateway Zap");
     
     // Start advertising
     BLEDevice::startAdvertising();
     isAdvertising = true;
-    Serial.println("BLE service started and advertising");
+    Serial.println("BLE service started and advertising with iOS-optimized settings");
 }
 
 void BLEHandler::stop() {

@@ -14,6 +14,20 @@
 class BLERequestCallback;
 class BLEResponseCallback;
 
+// Custom server callbacks to handle connection events
+class SrcfulBLEServerCallbacks: public BLEServerCallbacks {
+public:
+    void onConnect(BLEServer* pServer) override {
+        Serial.println("BLE client connected");
+    }
+    
+    void onDisconnect(BLEServer* pServer) override {
+        Serial.println("BLE client disconnected");
+        // Restart advertising when disconnected to allow new connections
+        BLEDevice::startAdvertising();
+    }
+};
+
 class BLEHandler {
 public:
     BLEHandler(WebServer* server);
@@ -31,6 +45,7 @@ private:
     BLECharacteristic* pResponseChar;
     BLERequestCallback* pRequestCallback;
     BLEResponseCallback* pResponseCallback;
+    SrcfulBLEServerCallbacks* pServerCallbacks;
     bool isAdvertising;
     
     String constructResponse(const String& location, const String& method, 
