@@ -18,7 +18,6 @@ enum class Endpoint {
     NAME_INFO,
     WIFI_STATUS,
     WIFI_SCAN,
-    INITIALIZE,
     BLE_STOP,
     CRYPTO_SIGN,
     UNKNOWN

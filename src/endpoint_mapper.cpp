@@ -10,7 +10,6 @@ const char* EndpointMapper::CRYPTO_INFO_PATH = "/api/crypto";
 const char* EndpointMapper::NAME_INFO_PATH = "/api/name";
 const char* EndpointMapper::WIFI_STATUS_PATH = "/api/wifi";
 const char* EndpointMapper::WIFI_SCAN_PATH = "/api/wifi/scan";
-const char* EndpointMapper::INITIALIZE_PATH = "/api/initialize";
 const char* EndpointMapper::BLE_STOP_PATH = "/api/ble/stop";
 const char* EndpointMapper::CRYPTO_SIGN_PATH = "/api/crypto/sign";
 
@@ -22,7 +21,6 @@ Endpoint EndpointMapper::pathToEndpoint(const String& path) {
     if (path == NAME_INFO_PATH) return Endpoint::NAME_INFO;
     if (path == WIFI_STATUS_PATH) return Endpoint::WIFI_STATUS;
     if (path == WIFI_SCAN_PATH) return Endpoint::WIFI_SCAN;
-    if (path == INITIALIZE_PATH) return Endpoint::INITIALIZE;
     if (path == BLE_STOP_PATH) return Endpoint::BLE_STOP;
     if (path == CRYPTO_SIGN_PATH) return Endpoint::CRYPTO_SIGN;
     return Endpoint::UNKNOWN;
@@ -37,7 +35,6 @@ String EndpointMapper::endpointToPath(Endpoint endpoint) {
         case Endpoint::NAME_INFO: return NAME_INFO_PATH;
         case Endpoint::WIFI_STATUS: return WIFI_STATUS_PATH;
         case Endpoint::WIFI_SCAN: return WIFI_SCAN_PATH;
-        case Endpoint::INITIALIZE: return INITIALIZE_PATH;
         case Endpoint::BLE_STOP: return BLE_STOP_PATH;
         case Endpoint::CRYPTO_SIGN: return CRYPTO_SIGN_PATH;
         default: return "";
@@ -110,14 +107,6 @@ EndpointResponse EndpointMapper::route(const EndpointRequest& request) {
             }
             break;
             
-        case Endpoint::INITIALIZE:
-            if (request.method == HttpMethod::GET) {
-                return handleInitializeForm(request);
-            } else if (request.method == HttpMethod::POST) {
-                return handleInitialize(request);
-            }
-            break;
-            
         case Endpoint::BLE_STOP:
             if (request.method == HttpMethod::POST) {
                 #if defined(USE_BLE_SETUP)
@@ -159,7 +148,6 @@ void EndpointMapper::printPaths() {
     Serial.println(NAME_INFO_PATH);
     Serial.println(WIFI_STATUS_PATH);
     Serial.println(WIFI_SCAN_PATH);
-    Serial.println(INITIALIZE_PATH);
     Serial.println(BLE_STOP_PATH);
     Serial.println(CRYPTO_SIGN_PATH);
 } 

@@ -46,10 +46,26 @@ String createP1JWT(const char* privateKey, const String& deviceId) {
     
     // Power simulation: Base load + daily cycle + random variation
     float basePower = 1.5; // 1.5 kW base load
-    float dailyCycle = sin(2 * PI * timeInSeconds / (24 * 3600)) * 0.5; // ±0.5 kW daily variation
-    float fastCycle = sin(2 * PI * timeInSeconds / 300) * 0.2; // ±0.2 kW every 5 minutes
-    float totalPower = basePower + dailyCycle + fastCycle;
-    if(totalPower < 0) totalPower = 0;
+    
+    // Phase 1: ~1 hour cycle
+    float phase1Cycle = sin(2 * PI * timeInSeconds / 3600) * 0.8; // ±0.8 kW variation
+    // Phase 2: ~45 minutes cycle with offset
+    float phase2Cycle = sin(2 * PI * timeInSeconds / 2700 + PI/3) * 0.6; // ±0.6 kW variation
+    // Phase 3: ~1.5 hour cycle with offset
+    float phase3Cycle = sin(2 * PI * timeInSeconds / 5400 + 2*PI/3) * 0.7; // ±0.7 kW variation
+    
+    // Calculate individual phase powers
+    float powerL1 = basePower/3 + phase1Cycle;
+    float powerL2 = basePower/3 + phase2Cycle;
+    float powerL3 = basePower/3 + phase3Cycle;
+    
+    // Ensure no negative power
+    if(powerL1 < 0) powerL1 = 0;
+    if(powerL2 < 0) powerL2 = 0;
+    if(powerL3 < 0) powerL3 = 0;
+    
+    // Total power for other calculations
+    float totalPower = powerL1 + powerL2 + powerL3;
 
     // Voltage simulation: 230V + sine wave variation
     float baseVoltage = 230.0;
@@ -58,10 +74,10 @@ String createP1JWT(const char* privateKey, const String& deviceId) {
     float voltageL2 = baseVoltage + voltageVariation * cos(2 * PI / 3);
     float voltageL3 = baseVoltage + voltageVariation * cos(4 * PI / 3);
 
-    // Current simulation based on power and voltage
-    float currentL1 = (totalPower * 1000 / 3) / voltageL1;
-    float currentL2 = (totalPower * 1000 / 3) / voltageL2;
-    float currentL3 = (totalPower * 1000 / 3) / voltageL3;
+    // Current simulation based on individual phase powers and voltages
+    float currentL1 = (powerL1 * 1000) / voltageL1;
+    float currentL2 = (powerL2 * 1000) / voltageL2;
+    float currentL3 = (powerL3 * 1000) / voltageL3;
 
     // Calculate cumulative energy
     static float lastEnergy = 10968.132;

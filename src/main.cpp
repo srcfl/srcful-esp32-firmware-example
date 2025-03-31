@@ -352,28 +352,6 @@ void setupEndpoints() {
         server.send(response.statusCode, response.contentType, response.data);
     });
 
-    server.on("/api/initialize", HTTP_GET, []() {
-        EndpointRequest request;
-        request.method = HttpMethod::GET;
-        request.endpoint = Endpoint::INITIALIZE;
-        request.content = "";
-        request.offset = 0;
-
-        EndpointResponse response = EndpointMapper::route(request);
-        server.send(response.statusCode, response.contentType, response.data);
-    });
-
-    server.on("/api/initialize", HTTP_POST, []() {
-        EndpointRequest request;
-        request.method = HttpMethod::POST;
-        request.endpoint = Endpoint::INITIALIZE;
-        request.content = server.arg("plain");
-        request.offset = 0;
-
-        EndpointResponse response = EndpointMapper::route(request);
-        server.send(response.statusCode, response.contentType, response.data);
-    });
-
     server.on("/api/ble/stop", HTTP_POST, []() {
         Serial.println("Handling POST /api/ble/stop request");
         EndpointRequest request;

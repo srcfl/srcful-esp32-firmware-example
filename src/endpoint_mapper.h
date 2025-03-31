@@ -14,7 +14,6 @@ public:
     static const char* NAME_INFO_PATH;
     static const char* WIFI_STATUS_PATH;
     static const char* WIFI_SCAN_PATH;
-    static const char* INITIALIZE_PATH;
     static const char* BLE_STOP_PATH;
     static const char* CRYPTO_SIGN_PATH;
 
