@@ -112,13 +112,13 @@ String createP1JWT(const char* privateKey, const String& deviceId) {
     rows.add(buffer);
 
     // Per phase power
-    snprintf(buffer, sizeof(buffer), "1-0:21.7.0(%07.3f*kW)", totalPower / 3);
+    snprintf(buffer, sizeof(buffer), "1-0:21.7.0(%07.3f*kW)", powerL1);
     rows.add(buffer);
     rows.add("1-0:22.7.0(0000.000*kW)");
-    snprintf(buffer, sizeof(buffer), "1-0:41.7.0(%07.3f*kW)", totalPower / 3);
+    snprintf(buffer, sizeof(buffer), "1-0:41.7.0(%07.3f*kW)", powerL2);
     rows.add(buffer);
     rows.add("1-0:42.7.0(0000.000*kW)");
-    snprintf(buffer, sizeof(buffer), "1-0:61.7.0(%07.3f*kW)", totalPower / 3);
+    snprintf(buffer, sizeof(buffer), "1-0:61.7.0(%07.3f*kW)", powerL3);
     rows.add(buffer);
     rows.add("1-0:62.7.0(0000.000*kW)");
 
