@@ -11,6 +11,12 @@
 #include "crypto.h"
 #include "endpoint_mapper.h"
 
+
+// Define Queue properties
+#define REQUEST_QUEUE_LENGTH 5
+#define REQUEST_QUEUE_ITEM_SIZE sizeof(char*) // Size of the pointer to the data
+#define REQUEST_QUEUE_RECEIVE_TIMEOUT_MS 10 // Timeout for waiting on the queue
+
 BLEHandler::BLEHandler(WebServer* server) : webServer(server) {
     pServer = nullptr;
     pService = nullptr;
@@ -18,20 +24,28 @@ BLEHandler::BLEHandler(WebServer* server) : webServer(server) {
     pResponseChar = nullptr;
     pServerCallbacks = nullptr;
     isAdvertising = false;
+
+    // Create the queue
+    _requestQueue = xQueueCreate(REQUEST_QUEUE_LENGTH, REQUEST_QUEUE_ITEM_SIZE);
+    if (_requestQueue == nullptr) {
+        Serial.println("Error creating BLE request queue!");
+        // Handle error appropriately - maybe halt or signal failure
+    } else {
+        Serial.println("BLE request queue created successfully.");
+    }
 }
 
 void BLEHandler::init() {
     // Initialize BLE with reduced features and increase stack size for better handling
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     bt_cfg.controller_task_stack_size = 4096;
-    bt_cfg.mode = ESP_BT_MODE_BLE;
     
     esp_bt_controller_init(&bt_cfg);
     esp_bt_controller_enable(ESP_BT_MODE_BLE);
     esp_bluedroid_init();
     esp_bluedroid_enable();
     
-    BLEDevice::init("Sourceful Gateway Zap");
+    BLEDevice::init("Sourceful Zippy Zap");
     btStart();
     esp_bt_controller_mem_release(ESP_BT_MODE_CLASSIC_BT);  // Release classic BT memory
     
@@ -96,7 +110,7 @@ void BLEHandler::init() {
     pAdvertising->setMaxInterval(0x30);   // 30ms
     
     // Set appearance and device name - helps with iOS discovery
-    esp_ble_gap_set_device_name("Sourceful Gateway Zap");
+    esp_ble_gap_set_device_name("Sourceful Zippy Zap");
     
     // Start advertising
     BLEDevice::startAdvertising();
@@ -111,6 +125,12 @@ void BLEHandler::stop() {
         BLEDevice::deinit(true);  // true = release memory
         Serial.println("BLE stopped and resources released");
     }
+    // Optional: Delete queue if BLEHandler instance is being destroyed or permanently stopped
+    // if (_requestQueue != nullptr) {
+    //     vQueueDelete(_requestQueue);
+    //     _requestQueue = nullptr;
+    //     Serial.println("BLE request queue deleted.");
+    // }
 }
 
 void BLEHandler::checkAdvertising() {
@@ -182,16 +202,26 @@ bool BLEHandler::sendResponse(const String& location, const String& method,
     return true;
 }
 
-// Update error responses to use PROGMEM strings
+// handleRequest processes a single request string
 void BLEHandler::handleRequest(const String& request) {
     String method, path, content;
     int offset = 0;
-    
+    // Reserve some space to potentially reduce reallocations during parsing
+    method.reserve(10);
+    path.reserve(64);
+    // Content reservation depends heavily on expected payload size
+
     if (!parseRequest(request, method, path, content, offset)) {
+        Serial.println("Failed to parse request.");
+        // Send error response - use FPSTR to avoid String allocation for the error message itself
         sendResponse(path, method, FPSTR(ERROR_INVALID_REQUEST), 0);
         return;
     }
-    
+
+    Serial.printf("Parsed Request: Method='%s', Path='%s', Offset=%d, Content Length=%d\n",
+                  method.c_str(), path.c_str(), offset, content.length());
+    // Serial.println("Content: " + content); // Optional: Print content
+
     handleRequestInternal(method, path, content, offset);
 }
 
@@ -243,16 +273,86 @@ bool BLEHandler::parseRequest(const String& request, String& method, String& pat
     return true;
 }
 
+void BLEHandler::handlePendingRequest() {
+    if (_requestQueue == nullptr) return;
+
+    // Receive the pointer to the data
+    char* buffer = nullptr;
+    if (xQueueReceive(_requestQueue, &buffer, pdMS_TO_TICKS(REQUEST_QUEUE_RECEIVE_TIMEOUT_MS)) == pdPASS) {
+        if (buffer != nullptr) {
+            Serial.printf("Dequeued request (%d bytes)\n", strlen(buffer));
+
+            // Create a String object from the buffer
+            String receivedRequest(buffer);
+
+            // Process the request
+            handleRequest(receivedRequest);
+
+            // Free the buffer that was allocated in enqueueRequest
+            free(buffer);
+        }
+    }
+}
+
+void BLEHandler::enqueueRequest(const String& requestStr) {
+    if (_requestQueue == nullptr) {
+        Serial.println("Error: Request queue is null in enqueueRequest.");
+        return;
+    }
+
+    // Create a buffer to store the raw data
+    char* buffer = (char*)malloc(requestStr.length() + 1);
+    if (buffer == nullptr) {
+        Serial.println("Error: Failed to allocate buffer for BLE request");
+        return;
+    }
+
+    // Copy the string data to the buffer
+    strcpy(buffer, requestStr.c_str());
+
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    BaseType_t xResult = xQueueSendFromISR(_requestQueue, &buffer, &xHigherPriorityTaskWoken);
+
+    if (xResult != pdPASS) {
+        Serial.println("Error: Failed to enqueue BLE request (Queue full?). Request lost.");
+        free(buffer);  // Free the buffer if enqueue failed
+    }
+    // Note: We don't free the buffer here if enqueue succeeded because the receiving task will free it
+    
+    // Yield if necessary
+    if (xHigherPriorityTaskWoken) {
+        portYIELD_FROM_ISR();
+    }
+}
+
 void BLERequestCallback::onWrite(BLECharacteristic* pCharacteristic) {
+    // Ensure handler is valid
+    if (handler == nullptr) {
+         Serial.println("Error: BLEHandler is null in onWrite callback!");
+         return;
+     }
+
     std::string value = pCharacteristic->getValue();
-    if (value.length() > 0) {
-        Serial.println("Received BLE write request:");
-        Serial.println(value.c_str());
-        String request = String(value.c_str());
-        handler->handleRequest(request);
+    if (!value.empty()) {
+        // Limit logged output size if necessary
+        Serial.printf("Received BLE write request (%d bytes)\n", value.length());
+
+        // Create an Arduino String object from the received data.
+        String requestStr = String(value.c_str());
+
+        // Use the public handler method to enqueue the request
+        handler->enqueueRequest(requestStr);
+
+         // IMPORTANT: 'requestStr' goes out of scope here. The handler's 
+         // enqueueRequest method handles the copy needed for the queue.
     }
 }
 
 void BLEResponseCallback::onRead(BLECharacteristic* pCharacteristic) {
     Serial.println("BLE read request received");
+    // Typically, reads fetch the current value set by setValue,
+    // which should contain the last response sent.
+    // No specific action usually needed here unless implementing custom read logic.
+    // String currentValue = pCharacteristic->getValue().c_str();
+    // Serial.println("Current Response Char Value: " + currentValue);
 } 

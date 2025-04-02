@@ -214,14 +214,19 @@ void loop() {
         Serial.println(WiFi.status());
     }
 
-    // Check if it's time to shut down BLE
+    // handle ble tasks
     #if defined(USE_BLE_SETUP)
-    if (bleShutdownTime > 0 && millis() >= bleShutdownTime) {
-        Serial.println("Executing scheduled BLE shutdown");
-        bleHandler.stop();
-        isBleActive = false;
-        bleShutdownTime = 0;  // Reset the timer
-    }
+        static unsigned long lastBLECheck = 0;
+        if (millis() - lastBLECheck > 1000) {
+            lastBLECheck = millis();
+            bleHandler.handlePendingRequest();
+        }
+        if (bleShutdownTime > 0 && millis() >= bleShutdownTime) {
+            Serial.println("Executing scheduled BLE shutdown");
+            bleHandler.stop();
+            isBleActive = false;
+            bleShutdownTime = 0;  // Reset the timer
+        }
     #endif
 
     // Handle incoming client requests if we're connected

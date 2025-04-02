@@ -11,6 +11,10 @@
 #include "ble_constants.h"
 #include <WebServer.h>
 
+// Include FreeRTOS queue headers
+#include <freertos/FreeRTOS.h>
+#include <freertos/queue.h>
+
 class BLERequestCallback;
 class BLEResponseCallback;
 
@@ -36,6 +40,8 @@ public:
     bool sendResponse(const String& location, const String& method, const String& data, int offset = 0);
     void handleRequest(const String& request);
     void checkAdvertising();
+    void handlePendingRequest();
+    void enqueueRequest(const String& requestStr);
 
 private:
     WebServer* webServer;
@@ -47,6 +53,7 @@ private:
     BLEResponseCallback* pResponseCallback;
     SrcfulBLEServerCallbacks* pServerCallbacks;
     bool isAdvertising;
+    QueueHandle_t _requestQueue = nullptr;
     
     String constructResponse(const String& location, const String& method, 
                            const String& data, int offset);
@@ -54,6 +61,7 @@ private:
                      String& content, int& offset);
     void handleRequestInternal(const String& method, const String& path, 
                              const String& content, int offset);
+
 };
 
 class BLERequestCallback : public BLECharacteristicCallbacks {
